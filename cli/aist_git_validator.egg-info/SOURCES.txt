@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+aist_git_validator.egg-info/PKG-INFO
+aist_git_validator.egg-info/SOURCES.txt
+aist_git_validator.egg-info/dependency_links.txt
+aist_git_validator.egg-info/entry_points.txt
+aist_git_validator.egg-info/requires.txt
+aist_git_validator.egg-info/top_level.txt
+app/__init__.py
+app/cli.py
+app/jira.py
+app/validator.py
