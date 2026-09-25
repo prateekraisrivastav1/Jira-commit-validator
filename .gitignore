@@ -1,2 +1,3 @@
 .env
 *.pem
+github_app/app/__pycache__/*

@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-httpx
-PyJWT
-cryptography
-python-dotenv
-cachetools
