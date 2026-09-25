@@ -20,7 +20,7 @@ class GitHubClient:
         ) as f:
             self.private_key = f.read()
 
-    def create_jwt(self):
+    def create_jwt(self) -> str:
         now = int(time.time())
 
         payload = {
@@ -38,7 +38,7 @@ class GitHubClient:
     async def get_installation_token(
         self,
         installation_id: int,
-    ):
+    )-> str:
         app_jwt = self.create_jwt()
 
         url = (
