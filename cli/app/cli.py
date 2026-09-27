@@ -1,9 +1,13 @@
 import argparse
 import asyncio
+import getpass
+import json
 import os
 import shutil
 import subprocess
 import sys
+import webbrowser
+from datetime import date, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,6 +17,53 @@ from app.validator import validate_commit
 
 
 HOOK_NAME = "commit-msg"
+ATLASSIAN_API_TOKEN_URL = (
+    "https://id.atlassian.com/manage-profile/security/api-tokens"
+)
+
+
+def get_config_directory() -> Path:
+    return Path.home() / ".aist"
+
+
+def get_config_path() -> Path:
+    return get_config_directory() / "config.json"
+
+
+def load_config() -> dict:
+    config_path = get_config_path()
+
+    if not config_path.exists():
+        return {}
+
+    try:
+        return json.loads(
+            config_path.read_text(encoding="utf-8")
+        )
+    except json.JSONDecodeError:
+        print(
+            f"Invalid AIST configuration file: {config_path}",
+            file=sys.stderr,
+        )
+        return {}
+
+
+def save_config(config: dict) -> None:
+    config_directory = get_config_directory()
+    config_directory.mkdir(parents=True, exist_ok=True)
+
+    config_path = get_config_path()
+    temp_path = config_path.with_suffix(".tmp")
+
+    temp_path.write_text(
+        json.dumps(config, indent=4),
+        encoding="utf-8",
+    )
+
+    if os.name != "nt":
+        temp_path.chmod(0o600)
+
+    temp_path.replace(config_path)
 
 
 def get_hooks_directory() -> Path:
@@ -60,7 +111,6 @@ def install():
 
     hook_path = get_hook_path()
 
-    # Git for Windows executes hooks through its shell.
     hook_content = """#!/bin/sh
 aistctl validate-commit "$1"
 exit $?
@@ -71,7 +121,6 @@ exit $?
         encoding="utf-8",
     )
 
-    # Required on Linux/macOS.
     if os.name != "nt":
         hook_path.chmod(0o755)
 
@@ -83,40 +132,269 @@ exit $?
     )
 
     if result.returncode != 0:
-        print("❌ Failed to configure Git.")
+        print("Failed to configure Git.")
         print(result.stderr.strip())
         sys.exit(1)
 
-    print("✅ AIST Git Validator installed.")
+    print("AIST Git Validator installed.")
     print("")
     print(f"Hook directory : {hooks_directory}")
     print(f"Commit hook    : {hook_path}")
     print("")
-    print("All Git repositories on this machine now use the")
+    print(
+        "All Git repositories on this machine now use the"
+    )
     print("AIST commit-msg validation hook.")
 
 
 def uninstall():
     """
     Remove the AIST global commit-msg hook.
-
-    We remove only our hook. We intentionally do not unset
-    core.hooksPath automatically because another tool may be
-    using the same global setting.
     """
 
     hook_path = get_hook_path()
 
     if hook_path.exists():
         hook_path.unlink()
-        print("✅ AIST Git Validator hook removed.")
+        print("AIST Git Validator hook removed.")
     else:
-        print("ℹ️ AIST Git Validator hook is not installed.")
+        print("AIST Git Validator hook is not installed.")
 
     print("")
     print(
         "Note: global Git core.hooksPath was not changed."
     )
+
+
+def get_token_status(expires_at: str | None) -> str:
+    if not expires_at:
+        return "expiration date not configured"
+
+    try:
+        expiration_date = date.fromisoformat(expires_at)
+    except ValueError:
+        return "invalid expiration date"
+
+    today = date.today()
+    days_remaining = (expiration_date - today).days
+
+    if days_remaining < 0:
+        return f"expired {abs(days_remaining)} days ago"
+
+    if days_remaining == 0:
+        return "expires today"
+
+    if days_remaining <= 30:
+        return f"expires in {days_remaining} days"
+
+    return f"valid for {days_remaining} days"
+
+
+def configure():
+    """
+    Configure Jira credentials for the AIST Git Validator.
+    """
+
+    existing = load_config()
+
+    print("AIST Git Validator Configuration")
+    print("================================")
+    print("")
+
+    jira_base_url = input(
+        "Jira Base URL"
+        + (
+            f" [{existing.get('jira_base_url')}]"
+            if existing.get("jira_base_url")
+            else ""
+        )
+        + ": "
+    ).strip()
+
+    if not jira_base_url:
+        jira_base_url = existing.get("jira_base_url", "")
+
+    jira_email = input(
+        "Jira Email"
+        + (
+            f" [{existing.get('jira_email')}]"
+            if existing.get("jira_email")
+            else ""
+        )
+        + ": "
+    ).strip()
+
+    if not jira_email:
+        jira_email = existing.get("jira_email", "")
+
+    print("")
+    print("Opening Atlassian API token page...")
+    webbrowser.open(ATLASSIAN_API_TOKEN_URL)
+
+    print("")
+    print(
+        "Create an API token in the browser, then copy and "
+        "paste it below."
+    )
+    print("")
+
+    jira_api_token = getpass.getpass(
+        "Jira API Token: "
+    ).strip()
+
+    if not jira_api_token:
+        jira_api_token = existing.get("jira_api_token", "")
+
+    if not jira_base_url or not jira_email or not jira_api_token:
+        print("Jira configuration is incomplete.")
+        sys.exit(1)
+
+    expiration_date = input(
+        "Token Expiration Date (YYYY-MM-DD): "
+    ).strip()
+
+    try:
+        expiration = date.fromisoformat(expiration_date)
+    except ValueError:
+        print(
+            "Invalid expiration date. Use YYYY-MM-DD."
+        )
+        sys.exit(1)
+
+    if expiration < date.today():
+        print("Token expiration date cannot be in the past.")
+        sys.exit(1)
+
+    print("")
+    print("Validating Jira credentials...")
+
+    try:
+        jira = JiraClient(
+            base_url=jira_base_url,
+            email=jira_email,
+            api_token=jira_api_token,
+        )
+
+        asyncio.run(jira.validate_credentials())
+
+    except Exception as exc:
+        print("Unable to validate Jira credentials.")
+        print(f"Reason: {exc}")
+        sys.exit(1)
+
+    config = {
+        "jira_base_url": jira_base_url.rstrip("/"),
+        "jira_email": jira_email,
+        "jira_api_token": jira_api_token,
+        "jira_token_expires": expiration.isoformat(),
+    }
+
+    save_config(config)
+
+    print("")
+    print("Jira connection successful.")
+    print(f"Configuration saved to: {get_config_path()}")
+
+
+def setup():
+    """
+    Perform first-time AIST Git Validator setup.
+    """
+
+    print("AIST Git Validator Setup")
+    print("========================")
+    print("")
+
+    configure()
+
+    print("")
+    print("Installing Git commit hook...")
+    print("")
+
+    install()
+
+    print("")
+    print("Setup completed successfully.")
+
+
+def renew():
+    """
+    Renew the Jira API token.
+    """
+
+    config = load_config()
+
+    if not config:
+        print(
+            "AIST Git Validator is not configured."
+        )
+        print("Run: aistctl setup")
+        sys.exit(1)
+
+    print("AIST Git Validator Token Renewal")
+    print("================================")
+    print("")
+
+    print("Opening Atlassian API token page...")
+    webbrowser.open(ATLASSIAN_API_TOKEN_URL)
+
+    print("")
+    print(
+        "Create a new API token in the browser, then "
+        "copy and paste it below."
+    )
+    print("")
+
+    jira_api_token = getpass.getpass(
+        "New Jira API Token: "
+    ).strip()
+
+    if not jira_api_token:
+        print("API token cannot be empty.")
+        sys.exit(1)
+
+    expiration_date = input(
+        "Token Expiration Date (YYYY-MM-DD): "
+    ).strip()
+
+    try:
+        expiration = date.fromisoformat(expiration_date)
+    except ValueError:
+        print(
+            "Invalid expiration date. Use YYYY-MM-DD."
+        )
+        sys.exit(1)
+
+    if expiration < date.today():
+        print("Token expiration date cannot be in the past.")
+        sys.exit(1)
+
+    print("")
+    print("Validating Jira credentials...")
+
+    try:
+        jira = JiraClient(
+            base_url=config["jira_base_url"],
+            email=config["jira_email"],
+            api_token=jira_api_token,
+        )
+
+        asyncio.run(jira.validate_credentials())
+
+    except Exception as exc:
+        print("Unable to validate Jira credentials.")
+        print(f"Reason: {exc}")
+        sys.exit(1)
+
+    config["jira_api_token"] = jira_api_token
+    config["jira_token_expires"] = expiration.isoformat()
+
+    save_config(config)
+
+    print("")
+    print("Jira connection successful.")
+    print("API token updated successfully.")
+
 
 def status():
     """
@@ -128,10 +406,10 @@ def status():
     RESET = "\033[0m"
 
     def configured(label, value):
-        print(f"{label:<18}: {GREEN}{value}{RESET}")
+        print(f"{label:<20}: {GREEN}{value}{RESET}")
 
     def not_configured(label, value):
-        print(f"{label:<18}: {RED}{value}{RESET}")
+        print(f"{label:<20}: {RED}{value}{RESET}")
 
     print("AIST Git Validator")
     print("===================")
@@ -170,12 +448,18 @@ def status():
     if result.returncode == 0:
         configured_path = result.stdout.strip()
 
-        configured("core.hooksPath", configured_path)
+        configured(
+            "core.hooksPath",
+            configured_path,
+        )
 
         if Path(configured_path).resolve() == (
             get_hooks_directory().resolve()
         ):
-            configured("AIST hook path", "configured")
+            configured(
+                "AIST hook path",
+                "configured",
+            )
         else:
             not_configured(
                 "AIST hook path",
@@ -187,21 +471,73 @@ def status():
             "not configured",
         )
 
-    required_variables = [
-        "JIRA_BASE_URL",
-        "JIRA_EMAIL",
-        "JIRA_API_TOKEN",
-    ]
+    config = load_config()
 
     print("")
     print("Jira configuration")
     print("------------------")
 
-    for variable in required_variables:
-        if os.getenv(variable):
-            configured(variable, "configured")
-        else:
-            not_configured(variable, "not configured")
+    if config.get("jira_base_url"):
+        configured(
+            "Jira URL",
+            config["jira_base_url"],
+        )
+    else:
+        not_configured(
+            "Jira URL",
+            "not configured",
+        )
+
+    if config.get("jira_email"):
+        configured(
+            "Jira email",
+            config["jira_email"],
+        )
+    else:
+        not_configured(
+            "Jira email",
+            "not configured",
+        )
+
+    if config.get("jira_api_token"):
+        configured(
+            "Jira API token",
+            "configured",
+        )
+    else:
+        not_configured(
+            "Jira API token",
+            "not configured",
+        )
+
+    token_status = get_token_status(
+        config.get("jira_token_expires")
+    )
+
+    if token_status.startswith(
+        ("expired", "expires today", "invalid")
+    ):
+        not_configured(
+            "Token status",
+            token_status,
+        )
+    else:
+        configured(
+            "Token status",
+            token_status,
+        )
+
+    if config.get("jira_token_expires"):
+        configured(
+            "Token expiration",
+            config["jira_token_expires"],
+        )
+    else:
+        not_configured(
+            "Token expiration",
+            "not configured",
+        )
+
 
 async def validate_commit_message(
     message_file: str,
@@ -214,7 +550,7 @@ async def validate_commit_message(
 
     if not message_path.exists():
         print(
-            f"❌ Commit message file not found: {message_file}",
+            f"Commit message file not found: {message_file}",
             file=sys.stderr,
         )
 
@@ -224,7 +560,18 @@ async def validate_commit_message(
         encoding="utf-8",
     )
 
-    jira = JiraClient()
+    try:
+        jira = JiraClient()
+    except KeyError:
+        print("")
+        print("Commit rejected")
+        print(
+            "AIST Git Validator is not configured."
+        )
+        print("Run: aistctl setup")
+        print("")
+
+        return 1
 
     result = await validate_commit(
         commit_message,
@@ -233,14 +580,14 @@ async def validate_commit_message(
 
     if result["valid"]:
         print(
-            f"✓ Jira validation passed: "
+            f"Jira validation passed: "
             f"{result['jira_key']}"
         )
 
         return 0
 
     print("")
-    print("❌ Commit rejected")
+    print("Commit rejected")
     print(f"   {result['reason']}")
     print("")
 
@@ -263,25 +610,36 @@ def main():
         required=True,
     )
 
-    # install
+    subparsers.add_parser(
+        "setup",
+        help="Configure Jira and install the Git hook.",
+    )
+
+    subparsers.add_parser(
+        "configure",
+        help="Configure Jira credentials.",
+    )
+
+    subparsers.add_parser(
+        "renew",
+        help="Replace the Jira API token.",
+    )
+
     subparsers.add_parser(
         "install",
         help="Install the global Git commit-msg hook.",
     )
 
-    # uninstall
     subparsers.add_parser(
         "uninstall",
         help="Remove the AIST Git commit-msg hook.",
     )
 
-    # status
     subparsers.add_parser(
         "status",
         help="Show installation and configuration status.",
     )
 
-    # validate-commit
     validate_parser = subparsers.add_parser(
         "validate-commit",
         help="Validate a Git commit message.",
@@ -293,6 +651,18 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.command == "setup":
+        setup()
+        return
+
+    if args.command == "configure":
+        configure()
+        return
+
+    if args.command == "renew":
+        renew()
+        return
 
     if args.command == "install":
         install()
