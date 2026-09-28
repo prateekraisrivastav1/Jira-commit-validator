@@ -1,0 +1,8 @@
+<Project Sdk="WixToolset.Sdk/7.0.0">
+  <PropertyGroup>
+    <OutputName>AIST-Git-Validator</OutputName>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <AcceptEula>wix7</AcceptEula>
+  </PropertyGroup>
+</Project>

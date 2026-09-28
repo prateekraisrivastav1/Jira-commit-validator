@@ -1,0 +1,51 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="AIST Git Validator"
+    Manufacturer="AIST"
+    Version="1.0.0"
+    UpgradeCode="{7F8B6A2D-3B2D-4E9A-9C1A-5F5E7B8C2D11}">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of AIST Git Validator is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="AIST">
+        <Directory Id="APPLICATIONFOLDER" Name="Git Validator">
+
+          <Component
+            Id="ApplicationComponent"
+            Guid="{A2D7E9B1-4C6F-4E3A-8D21-7B5F9C2E1A44}">
+
+            <File
+              Id="AistCtlExe"
+              Source="..\cli\dist\aistctl.exe"
+              KeyPath="yes" />
+
+            <Environment
+              Id="AistPath"
+              Name="PATH"
+              Value="[APPLICATIONFOLDER]"
+              Permanent="no"
+              Part="last"
+              Action="set"
+              System="yes" />
+
+          </Component>
+
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature
+      Id="MainFeature"
+      Title="AIST Git Validator"
+      Level="1">
+
+      <ComponentRef Id="ApplicationComponent" />
+
+    </Feature>
+
+  </Package>
+</Wix>
