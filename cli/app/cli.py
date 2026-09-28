@@ -726,19 +726,58 @@ async def validate_commit_message(
     print("")
     print("Commit rejected.")
     print("")
-    print(result["reason"])
-    print("")
 
-    if "must contain a Jira issue key" in result["reason"]:
+    error_type = result.get("error_type")
+
+    if error_type == "missing_issue_key":
+        print(
+            "Commit message must contain a Jira issue key."
+        )
+        print("")
         print("Expected format:")
         print("  AIST-1234")
         print("")
         print("Example:")
-        print('  git commit -m "AIST-1234 Add validation"')
+        print(
+            '  git commit -m "AIST-1234 Add validation"'
+        )
         print("")
 
-    elif "does not exist in Jira" in result["reason"]:
+    elif error_type == "issue_not_found":
+        print(result["reason"])
+        print("")
         print("Please use an existing Jira issue key.")
+        print("")
+    elif error_type == "jira_authentication":
+        print(
+            f"Unable to validate {result['jira_key']} with Jira."
+        )
+        print("")
+        print(
+            "Jira authentication or permission failed."
+        )
+        print(
+            "Your Jira API token may be expired or revoked."
+        )
+        print("")
+        print("Run:")
+        print("  aistctl renew")
+        print("")
+    elif error_type == "jira_connection":
+        print(
+            "Unable to validate "
+            f"{result['jira_key']} with Jira."
+        )
+        print("")
+        print(result["reason"])
+        print("")
+        print(
+            "Check your network connection and "
+            "Jira availability."
+        )
+        print("")
+    else:
+        print(result["reason"])
         print("")
 
     return 1

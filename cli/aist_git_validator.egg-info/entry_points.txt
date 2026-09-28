@@ -1,2 +1,0 @@
-[console_scripts]
-aistctl = app.cli:main

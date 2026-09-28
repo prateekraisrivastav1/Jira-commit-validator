@@ -82,17 +82,29 @@ class JiraClient:
 
         url = f"{self.base_url}/rest/api/3/myself"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url,
-                auth=(
-                    self.email,
-                    self.api_token,
-                ),
-                headers={
-                    "Accept": "application/json",
-                },
-                timeout=10,
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    auth=(
+                        self.email,
+                        self.api_token,
+                    ),
+                    headers={
+                        "Accept": "application/json",
+                    },
+                    timeout=10,
+                )
+
+        except httpx.TimeoutException:
+            raise RuntimeError(
+                "Unable to reach Jira. "
+                "The request timed out."
+            )
+
+        except httpx.RequestError as exc:
+            raise RuntimeError(
+                f"Unable to connect to Jira: {exc}"
             )
 
         if response.status_code == 200:
@@ -121,20 +133,32 @@ class JiraClient:
             f"issue/{issue_key}"
         )
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                url,
-                params={
-                    "fields": "key",
-                },
-                auth=(
-                    self.email,
-                    self.api_token,
-                ),
-                headers={
-                    "Accept": "application/json",
-                },
-                timeout=10,
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    params={
+                        "fields": "key",
+                    },
+                    auth=(
+                        self.email,
+                        self.api_token,
+                    ),
+                    headers={
+                        "Accept": "application/json",
+                    },
+                    timeout=10,
+                )
+
+        except httpx.TimeoutException:
+            raise RuntimeError(
+                "Jira request timed out. "
+                "Unable to reach Jira."
+            )
+
+        except httpx.RequestError as exc:
+            raise RuntimeError(
+                f"Unable to connect to Jira: {exc}"
             )
 
         if response.status_code == 200:
