@@ -1,6 +1,13 @@
 import re
 from typing import Optional
 
+from app.jira import (
+    JiraAuthenticationError,
+    JiraConnectionError,
+    JiraRateLimitError,
+    JiraUnexpectedResponseError,
+)
+
 
 JIRA_KEY_PATTERN = re.compile(
     r"\b(AIST-\d+)\b",
@@ -15,9 +22,7 @@ def extract_jira_key(
     Extract an AIST Jira issue key from the commit message.
     """
 
-    match = JIRA_KEY_PATTERN.search(
-        commit_message,
-    )
+    match = JIRA_KEY_PATTERN.search(commit_message)
 
     if not match:
         return None
@@ -38,9 +43,7 @@ async def validate_commit(
     3. The Jira issue must exist.
     """
 
-    jira_key = extract_jira_key(
-        commit_message,
-    )
+    jira_key = extract_jira_key(commit_message)
 
     if not jira_key:
         return {
@@ -53,75 +56,94 @@ async def validate_commit(
             ),
         }
 
-    # Validate Jira credentials before checking the issue.
-    # This prevents Jira from returning a 404 for an issue
-    # when the real problem is authentication or permission.
+    # Validate Jira credentials first. This prevents an invalid
+    # credential from being mistaken for a missing issue.
     try:
         await jira_client.validate_credentials()
 
+    except JiraAuthenticationError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_authentication",
+            "reason": str(exc),
+        }
+
+    except JiraConnectionError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_connection",
+            "reason": str(exc),
+        }
+
+    except JiraRateLimitError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_rate_limit",
+            "reason": str(exc),
+        }
+
+    except JiraUnexpectedResponseError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_unexpected_response",
+            "reason": str(exc),
+        }
+
     except Exception as exc:
-        error_message = str(exc).lower()
-
-        if "authentication or permission failed" in error_message:
-            return {
-                "valid": False,
-                "jira_key": jira_key,
-                "error_type": "jira_authentication",
-                "reason": (
-                    "Jira authentication or permission failed."
-                ),
-            }
-
-        if (
-            "timed out" in error_message
-            or "unable to reach jira" in error_message
-            or "unable to connect to jira" in error_message
-        ):
-            return {
-                "valid": False,
-                "jira_key": jira_key,
-                "error_type": "jira_connection",
-                "reason": str(exc),
-            }
-
         return {
             "valid": False,
             "jira_key": jira_key,
             "error_type": "jira_error",
-            "reason": (
-                f"Unable to validate Jira credentials: "
-                f"{exc}"
-            ),
+            "reason": f"Unable to validate Jira credentials: {exc}",
         }
 
     # Credentials are valid. Now check whether the issue exists.
     try:
-        exists = await jira_client.issue_exists(
-            jira_key,
-        )
+        exists = await jira_client.issue_exists(jira_key)
+
+    except JiraAuthenticationError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_authentication",
+            "reason": str(exc),
+        }
+
+    except JiraConnectionError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_connection",
+            "reason": str(exc),
+        }
+
+    except JiraRateLimitError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_rate_limit",
+            "reason": str(exc),
+        }
+
+    except JiraUnexpectedResponseError as exc:
+        return {
+            "valid": False,
+            "jira_key": jira_key,
+            "error_type": "jira_unexpected_response",
+            "reason": str(exc),
+        }
 
     except Exception as exc:
-        error_message = str(exc).lower()
-
-        if (
-            "timed out" in error_message
-            or "unable to reach jira" in error_message
-            or "unable to connect to jira" in error_message
-        ):
-            return {
-                "valid": False,
-                "jira_key": jira_key,
-                "error_type": "jira_connection",
-                "reason": str(exc),
-            }
-
         return {
             "valid": False,
             "jira_key": jira_key,
             "error_type": "jira_error",
             "reason": (
-                f"Unable to validate {jira_key} with Jira: "
-                f"{exc}"
+                f"Unable to validate {jira_key} with Jira: {exc}"
             ),
         }
 

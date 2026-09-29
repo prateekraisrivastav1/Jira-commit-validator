@@ -19,10 +19,31 @@ def load_config() -> dict:
         return json.loads(
             config_path.read_text(encoding="utf-8")
         )
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         raise RuntimeError(
             f"Invalid AIST configuration file: {config_path}"
-        )
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(
+            f"Unable to read AIST configuration file: {config_path}. "
+            f"Reason: {exc}"
+        ) from exc
+
+
+class JiraAuthenticationError(RuntimeError):
+    """Jira rejected the configured credentials or permissions."""
+
+
+class JiraConnectionError(RuntimeError):
+    """The Jira server could not be reached."""
+
+
+class JiraRateLimitError(RuntimeError):
+    """Jira rate-limited the request."""
+
+
+class JiraUnexpectedResponseError(RuntimeError):
+    """Jira returned an unexpected HTTP response."""
 
 
 class JiraClient:
@@ -43,7 +64,6 @@ class JiraClient:
         if api_token is None:
             api_token = config.get("jira_api_token")
 
-        # Keep environment variables as a fallback.
         if base_url is None:
             base_url = os.getenv("JIRA_BASE_URL")
 
@@ -75,6 +95,28 @@ class JiraClient:
         self.email = email
         self.api_token = api_token
 
+    @staticmethod
+    def _raise_for_response(
+        response: httpx.Response,
+        operation: str,
+    ) -> None:
+        status = response.status_code
+
+        if status in (401, 403):
+            raise JiraAuthenticationError(
+                "Jira authentication or permission failed."
+            )
+
+        if status == 429:
+            raise JiraRateLimitError(
+                "Jira rate limit exceeded. "
+                "Please wait and try again."
+            )
+
+        raise JiraUnexpectedResponseError(
+            f"Jira returned HTTP {status} while {operation}."
+        )
+
     async def validate_credentials(self) -> bool:
         """
         Validate the configured Jira credentials.
@@ -86,43 +128,29 @@ class JiraClient:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     url,
-                    auth=(
-                        self.email,
-                        self.api_token,
-                    ),
-                    headers={
-                        "Accept": "application/json",
-                    },
+                    auth=(self.email, self.api_token),
+                    headers={"Accept": "application/json"},
                     timeout=10,
                 )
-
-        except httpx.TimeoutException:
-            raise RuntimeError(
-                "Unable to reach Jira. "
-                "The request timed out."
-            )
-
+        except httpx.TimeoutException as exc:
+            raise JiraConnectionError(
+                "Unable to reach Jira. The request timed out."
+            ) from exc
         except httpx.RequestError as exc:
-            raise RuntimeError(
-                f"Unable to connect to Jira: {exc}"
-            )
+            raise JiraConnectionError(
+                "Unable to connect to Jira."
+            ) from exc
 
         if response.status_code == 200:
             return True
 
-        if response.status_code in (401, 403):
-            raise RuntimeError(
-                "Jira authentication or permission failed."
-            )
-
-        response.raise_for_status()
-
+        self._raise_for_response(
+            response,
+            "validating Jira credentials",
+        )
         return False
 
-    async def issue_exists(
-        self,
-        issue_key: str,
-    ) -> bool:
+    async def issue_exists(self, issue_key: str) -> bool:
         """
         Check whether the Jira issue exists in the configured
         Jira organization.
@@ -137,29 +165,19 @@ class JiraClient:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     url,
-                    params={
-                        "fields": "key",
-                    },
-                    auth=(
-                        self.email,
-                        self.api_token,
-                    ),
-                    headers={
-                        "Accept": "application/json",
-                    },
+                    params={"fields": "key"},
+                    auth=(self.email, self.api_token),
+                    headers={"Accept": "application/json"},
                     timeout=10,
                 )
-
-        except httpx.TimeoutException:
-            raise RuntimeError(
-                "Jira request timed out. "
-                "Unable to reach Jira."
-            )
-
+        except httpx.TimeoutException as exc:
+            raise JiraConnectionError(
+                "Jira request timed out. Unable to reach Jira."
+            ) from exc
         except httpx.RequestError as exc:
-            raise RuntimeError(
-                f"Unable to connect to Jira: {exc}"
-            )
+            raise JiraConnectionError(
+                "Unable to connect to Jira."
+            ) from exc
 
         if response.status_code == 200:
             return True
@@ -167,12 +185,8 @@ class JiraClient:
         if response.status_code == 404:
             return False
 
-        if response.status_code in (401, 403):
-            raise RuntimeError(
-                "Jira authentication or permission "
-                "failed."
-            )
-
-        response.raise_for_status()
-
+        self._raise_for_response(
+            response,
+            f"checking Jira issue {issue_key}",
+        )
         return False

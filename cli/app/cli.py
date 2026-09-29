@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 import webbrowser
-from datetime import date, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -203,29 +202,6 @@ def uninstall():
         "Note: global Git core.hooksPath was not changed."
     )
 
-def get_token_status(expires_at: str | None) -> str:
-    if not expires_at:
-        return "expiration date not configured"
-
-    try:
-        expiration_date = date.fromisoformat(expires_at)
-    except ValueError:
-        return "invalid expiration date"
-
-    today = date.today()
-    days_remaining = (expiration_date - today).days
-
-    if days_remaining < 0:
-        return f"expired {abs(days_remaining)} days ago"
-
-    if days_remaining == 0:
-        return "expires today"
-
-    if days_remaining <= 30:
-        return f"expires in {days_remaining} days"
-
-    return f"valid for {days_remaining} days"
-
 def configure():
     """
     Configure Jira credentials for the AIST Git Validator.
@@ -323,7 +299,6 @@ def configure():
         "jira_base_url": jira_base_url.rstrip("/"),
         "jira_email": jira_email,
         "jira_api_token": jira_api_token,
-        "jira_token_expires": expiration.isoformat(),
     }
 
     save_config(config)
@@ -420,31 +395,6 @@ def renew():
         sys.exit(1)
 
     print("")
-    expiration_date = input(
-        "Token Expiration Date (MM-DD-YYYY): "
-    ).strip()
-
-    try:
-        expiration = datetime.strptime(
-            expiration_date,
-            "%m-%d-%Y",
-        ).date()
-    except ValueError:
-        print("")
-        print(
-            "Invalid expiration date. "
-            "Use MM-DD-YYYY."
-        )
-        print("Existing API token was not changed.")
-        sys.exit(1)
-
-    if expiration < date.today():
-        print("")
-        print("Token expiration date cannot be in the past.")
-        print("Existing API token was not changed.")
-        sys.exit(1)
-
-    print("")
     print("Validating new Jira credentials...")
 
     try:
@@ -467,17 +417,12 @@ def renew():
     # Only update the existing configuration after the new
     # token has passed all validation.
     config["jira_api_token"] = jira_api_token
-    config["jira_token_expires"] = expiration.isoformat()
 
     save_config(config)
 
     print("")
     print("New Jira API token validated successfully.")
     print("API token updated successfully.")
-    print(
-        f"Token expiration: "
-        f"{expiration.strftime('%m-%d-%Y')}"
-    )
 
 def print_banner():
     print(
@@ -616,45 +561,6 @@ def status():
             "not configured",
         )
 
-    token_status = get_token_status(
-        config.get("jira_token_expires")
-    )
-
-    if token_status.startswith(
-        ("expired", "expires today", "invalid")
-    ):
-        not_configured(
-            "Token status",
-            token_status,
-        )
-    else:
-        configured(
-            "Token status",
-            token_status,
-        )
-
-    if config.get("jira_token_expires"):
-        try:
-            expiration = datetime.strptime(
-                config["jira_token_expires"],
-                "%Y-%m-%d",
-            ).date()
-
-            configured(
-                "Token expiration",
-                expiration.strftime("%m-%d-%Y"),
-            )
-
-        except ValueError:
-            not_configured(
-                "Token expiration",
-                "invalid",
-            )
-    else:
-        not_configured(
-            "Token expiration",
-            "not configured",
-        )
 
 async def validate_commit_message(
     message_file: str,
@@ -749,6 +655,32 @@ async def validate_commit_message(
             "Jira availability."
         )
         print("")
+
+    elif error_type == "jira_rate_limit":
+        print(
+            "Unable to validate "
+            f"{result['jira_key']} with Jira."
+        )
+        print("")
+        print(result["reason"])
+        print("")
+        print("Please wait and try the commit again.")
+        print("")
+
+    elif error_type == "jira_unexpected_response":
+        print(
+            "Unable to validate "
+            f"{result['jira_key']} with Jira."
+        )
+        print("")
+        print(result["reason"])
+        print("")
+        print(
+            "Check Jira availability or contact your "
+            "Jira administrator if the problem continues."
+        )
+        print("")
+
     else:
         print(result["reason"])
         print("")
@@ -847,9 +779,20 @@ def dispatch(args):
 def main():
     load_dotenv()
 
-    parser = build_parser()
-    args = parser.parse_args()
-    dispatch(args)
+    try:
+        parser = build_parser()
+        args = parser.parse_args()
+        dispatch(args)
+    except KeyboardInterrupt:
+        print("")
+        print("Operation cancelled.")
+        sys.exit(1)
+    except Exception as exc:
+        print("")
+        print("AIST Git Validator encountered an unexpected error.")
+        print(f"Reason: {exc}")
+        print("")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

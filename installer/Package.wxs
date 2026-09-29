@@ -1,4 +1,7 @@
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix
+  xmlns="http://wixtoolset.org/schemas/v4/wxs"
+  xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
   <Package
     Name="AIST Git Validator"
     Manufacturer="AIST"
@@ -6,13 +9,41 @@
     UpgradeCode="{7F8B6A2D-3B2D-4E9A-9C1A-5F5E7B8C2D11}">
 
     <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
       DowngradeErrorMessage="A newer version of AIST Git Validator is already installed." />
 
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Install-folder wizard; InstallDirectory sets WIXUI_INSTALLDIR for you -->
+    <ui:WixUI
+      Id="WixUI_InstallDir"
+      InstallDirectory="APPLICATIONFOLDER" />
+
+    <!-- Skip the license page: Welcome <-> InstallDir -->
+    <UI>
+      <Publish Dialog="WelcomeDlg"
+               Control="Next"
+               Event="NewDialog"
+               Value="InstallDirDlg"
+               Condition="NOT Installed"
+               Order="99" />
+      <Publish Dialog="InstallDirDlg"
+               Control="Back"
+               Event="NewDialog"
+               Value="WelcomeDlg"
+               Condition="NOT Installed"
+               Order="99" />
+    </UI>
+
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="AIST">
-        <Directory Id="APPLICATIONFOLDER" Name="Git Validator">
+
+      <Directory
+        Id="INSTALLFOLDER"
+        Name="AIST">
+
+        <Directory
+          Id="APPLICATIONFOLDER"
+          Name="Git Validator">
 
           <Component
             Id="ApplicationComponent"
@@ -35,7 +66,9 @@
           </Component>
 
         </Directory>
+
       </Directory>
+
     </StandardDirectory>
 
     <Feature
@@ -43,9 +76,11 @@
       Title="AIST Git Validator"
       Level="1">
 
-      <ComponentRef Id="ApplicationComponent" />
+      <ComponentRef
+        Id="ApplicationComponent" />
 
     </Feature>
 
   </Package>
+
 </Wix>
