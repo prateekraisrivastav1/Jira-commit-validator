@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import getpass
 import json
 import os
 import shutil
@@ -285,7 +284,7 @@ def configure():
     )
     print("")
 
-    jira_api_token = getpass.getpass(
+    jira_api_token = input(
         "Jira API Token: "
     ).strip()
 
@@ -295,32 +294,6 @@ def configure():
     if not jira_api_token:
         print("")
         print("Jira API token is required.")
-        sys.exit(1)
-
-    print("")
-    print("Token expiration")
-    print("-----------------")
-
-    expiration_date = input(
-        "Token Expiration Date (MM-DD-YYYY): "
-    ).strip()
-
-    try:
-        expiration = datetime.strptime(
-            expiration_date,
-            "%m-%d-%Y",
-        ).date()
-    except ValueError:
-        print("")
-        print(
-            "Invalid expiration date. "
-            "Use MM-DD-YYYY."
-        )
-        sys.exit(1)
-
-    if expiration < date.today():
-        print("")
-        print("Token expiration date cannot be in the past.")
         sys.exit(1)
 
     print("")
@@ -432,7 +405,7 @@ def renew():
     print("")
 
     try:
-        jira_api_token = getpass.getpass(
+        jira_api_token = input(
             "New Jira API Token: "
         ).strip()
     except (KeyboardInterrupt, EOFError):
