@@ -5,21 +5,19 @@
   <Package
     Name="AIST Git Validator"
     Manufacturer="AIST"
-    Version="1.0.0"
+    Version="1.0.1"
+    Scope="perUser"
     UpgradeCode="{7F8B6A2D-3B2D-4E9A-9C1A-5F5E7B8C2D11}">
 
     <MajorUpgrade
-      AllowSameVersionUpgrades="yes"
       DowngradeErrorMessage="A newer version of AIST Git Validator is already installed." />
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Install-folder wizard; InstallDirectory sets WIXUI_INSTALLDIR for you -->
     <ui:WixUI
       Id="WixUI_InstallDir"
       InstallDirectory="APPLICATIONFOLDER" />
 
-    <!-- Skip the license page: Welcome <-> InstallDir -->
     <UI>
       <Publish Dialog="WelcomeDlg"
                Control="Next"
@@ -27,6 +25,7 @@
                Value="InstallDirDlg"
                Condition="NOT Installed"
                Order="99" />
+
       <Publish Dialog="InstallDirDlg"
                Control="Back"
                Event="NewDialog"
@@ -35,7 +34,7 @@
                Order="99" />
     </UI>
 
-    <StandardDirectory Id="ProgramFiles64Folder">
+    <StandardDirectory Id="LocalAppDataFolder">
 
       <Directory
         Id="INSTALLFOLDER"
@@ -52,7 +51,35 @@
             <File
               Id="AistCtlExe"
               Source="..\cli\dist\aistctl.exe"
+              KeyPath="no" />
+
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\AIST\Git Validator"
+              Name="Installed"
+              Type="integer"
+              Value="1"
               KeyPath="yes" />
+
+            <RemoveFile
+              Id="RemoveApplicationFiles"
+              Name="*"
+              On="uninstall" />
+
+            <RemoveFile
+              Id="RemoveInstallFiles"
+              Directory="INSTALLFOLDER"
+              Name="*"
+              On="uninstall" />
+
+            <RemoveFolder
+              Id="RemoveApplicationFolder"
+              On="uninstall" />
+
+            <RemoveFolder
+              Id="RemoveInstallFolder"
+              Directory="INSTALLFOLDER"
+              On="uninstall" />
 
             <Environment
               Id="AistPath"
@@ -61,7 +88,7 @@
               Permanent="no"
               Part="last"
               Action="set"
-              System="yes" />
+              System="no" />
 
           </Component>
 

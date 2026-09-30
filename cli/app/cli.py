@@ -66,16 +66,11 @@ def save_config(config: dict) -> None:
 
 def get_hooks_directory() -> Path:
     """
-    Return the global AIST Git hooks directory.
+    Return the per-user global AIST Git hooks directory.
+
+    The hook is intentionally stored under the current user's profile so
+    installation does not require Administrator privileges.
     """
-
-    if os.name == "nt":
-        program_data = os.environ.get(
-            "PROGRAMDATA",
-            r"C:\ProgramData",
-        )
-
-        return Path(program_data) / "AIST" / "git-hooks"
 
     return Path.home() / ".aist" / "git-hooks"
 
@@ -170,7 +165,7 @@ exit $?
     print("AISTCTL is ready.")
     print("")
     print(
-        "All Git repositories on this machine now use "
+        "All Git repositories for this user now use "
         "AIST commit validation."
     )
 
