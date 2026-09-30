@@ -97,6 +97,20 @@
       </Directory>
 
     </StandardDirectory>
+    <CustomAction
+        Id="UninstallAistConfiguration"
+        FileRef="AistCtlExe"
+        ExeCommand="uninstall"
+        Execute="immediate"
+        Return="ignore"
+        Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom
+        Action="UninstallAistConfiguration"
+        Before="RemoveFiles"
+        Condition="REMOVE~=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
 
     <Feature
       Id="MainFeature"

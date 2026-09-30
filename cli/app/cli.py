@@ -169,33 +169,104 @@ exit $?
         "AIST commit validation."
     )
 
-
 def uninstall():
     """
-    Remove the AIST global commit-msg hook.
+    Remove the AIST Git integration and local configuration.
     """
 
+    hooks_directory = get_hooks_directory()
     hook_path = get_hook_path()
+    config_path = get_config_path()
 
-    if not hook_path.exists():
-        print("AIST Git commit hook is not installed.")
-        return
-
-    print("Removing Git commit hook...")
+    print("Removing AIST Git Validator...")
     print("")
 
-    try:
-        hook_path.unlink()
-    except OSError as exc:
-        print("Unable to remove the Git commit hook.")
-        print(f"Reason: {exc}")
-        sys.exit(1)
+    # Remove the AIST commit-msg hook.
+    if hook_path.exists():
+        try:
+            hook_path.unlink()
+            print("Git commit hook removed.")
+        except OSError as exc:
+            print("Unable to remove the Git commit hook.")
+            print(f"Reason: {exc}")
+            sys.exit(1)
+    else:
+        print("Git commit hook not found.")
 
-    print("Git hook removed.")
-    print("")
-    print(
-        "Note: global Git core.hooksPath was not changed."
+    # Only remove core.hooksPath if it currently points to
+    # the AIST-managed hook directory.
+    result = run_git(
+        "config",
+        "--global",
+        "--get",
+        "core.hooksPath",
     )
+
+    configured_hooks_path = result.stdout.strip()
+
+    if configured_hooks_path:
+        try:
+            configured_path = Path(
+                configured_hooks_path
+            ).expanduser().resolve()
+
+            expected_path = hooks_directory.resolve()
+
+            if configured_path == expected_path:
+                unset_result = run_git(
+                    "config",
+                    "--global",
+                    "--unset",
+                    "core.hooksPath",
+                )
+
+                if unset_result.returncode == 0:
+                    print("Global Git hooks path removed.")
+                elif unset_result.returncode == 5:
+                    print("Global Git hooks path already removed.")
+                else:
+                    print(
+                        "Unable to remove the global Git hooks path."
+                    )
+                    if unset_result.stderr.strip():
+                        print(
+                            f"Reason: "
+                            f"{unset_result.stderr.strip()}"
+                        )
+                    sys.exit(1)
+
+        except OSError:
+            pass
+
+    # Remove the AIST configuration.
+    if config_path.exists():
+        try:
+            config_path.unlink()
+            print("AIST configuration removed.")
+        except OSError as exc:
+            print("Unable to remove AIST configuration.")
+            print(f"Reason: {exc}")
+            sys.exit(1)
+
+    # Remove the AIST hook directory if it is now empty.
+    if hooks_directory.exists():
+        try:
+            hooks_directory.rmdir()
+        except OSError:
+            pass
+
+    # Remove the AIST configuration directory if it is now empty.
+    config_directory = get_config_directory()
+
+    if config_directory.exists():
+        try:
+            config_directory.rmdir()
+        except OSError:
+            pass
+
+    print("")
+    print("AIST Git Validator removed.")
+
 
 def configure():
     """
