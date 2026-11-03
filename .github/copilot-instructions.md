@@ -13,7 +13,7 @@ Requirements:
 
 4. Never invent a Jira issue key.
 
-5. If no Jira issue key is available, ask the developer to provide one.
+5. If no Jira issue key is available, ask the developer to provide one in the stored procedure.
 
 6. Describe the actual code changes clearly.
 
