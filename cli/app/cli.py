@@ -11,10 +11,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.jira import JiraClient
-from app.validator import validate_commit
+from app.validator import validate_stored_procedures
 
 
-HOOK_NAME = "commit-msg"
+HOOK_NAME = "pre-commit"
+LEGACY_HOOK_NAME = "commit-msg"
 ATLASSIAN_API_TOKEN_URL = (
     "https://id.atlassian.com/manage-profile/security/api-tokens"
 )
@@ -92,7 +93,7 @@ def run_git(*args: str) -> subprocess.CompletedProcess:
 
 def install():
     """
-    Install the global Git commit-msg hook.
+    Install the global Git pre-pre-commit hook.
     """
 
     print_banner()
@@ -113,14 +114,14 @@ def install():
         and Path(result.stdout.strip()).resolve()
         == hooks_directory.resolve()
     ):
-        print("AIST Git commit hook is already installed.")
+        print("AIST Git pre-commit hook is already installed.")
         print("")
         print(f"Hook directory : {hooks_directory}")
-        print(f"Commit hook    : {hook_path}")
+        print(f"Pre-pre-commit hook    : {hook_path}")
         print(f"Git hooks path : {hooks_directory}")
         return
 
-    print("Installing Git commit hook...")
+    print("Installing Git pre-commit hook...")
     print("")
 
     hooks_directory.mkdir(
@@ -128,8 +129,18 @@ def install():
         exist_ok=True,
     )
 
+    legacy_hook_path = hooks_directory / LEGACY_HOOK_NAME
+    if legacy_hook_path.exists():
+        legacy_content = legacy_hook_path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+        if "aistctl validate-commit" in legacy_content:
+            legacy_hook_path.unlink()
+            print("Previous AIST commit-message hook removed.")
+
     hook_content = """#!/bin/sh
-aistctl validate-commit "$1"
+aistctl validate-storedprocs
 exit $?
 """
 
@@ -159,14 +170,14 @@ exit $?
     print("Configuration")
     print("-------------")
     print(f"Hook directory : {hooks_directory}")
-    print(f"Commit hook    : {hook_path}")
+    print(f"Pre-pre-commit hook    : {hook_path}")
     print(f"Git hooks path : {hooks_directory}")
     print("")
     print("AISTCTL is ready.")
     print("")
     print(
         "All Git repositories for this user now use "
-        "AIST commit validation."
+        "AIST stored procedure validation."
     )
 
 def uninstall():
@@ -176,22 +187,37 @@ def uninstall():
 
     hooks_directory = get_hooks_directory()
     hook_path = get_hook_path()
+    legacy_hook_path = hooks_directory / LEGACY_HOOK_NAME
     config_path = get_config_path()
 
-    print("Removing AIST Git Validator...")
+    print("Removing AIST Stored Procedure Validator...")
     print("")
 
-    # Remove the AIST commit-msg hook.
+    # Remove the AIST pre-pre-commit hook.
     if hook_path.exists():
         try:
             hook_path.unlink()
-            print("Git commit hook removed.")
+            print("Git pre-commit hook removed.")
         except OSError as exc:
-            print("Unable to remove the Git commit hook.")
+            print("Unable to remove the Git pre-commit hook.")
             print(f"Reason: {exc}")
             sys.exit(1)
     else:
-        print("Git commit hook not found.")
+        print("Git pre-commit hook not found.")
+
+    if legacy_hook_path.exists():
+        try:
+            legacy_content = legacy_hook_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+            if "aistctl validate-commit" in legacy_content:
+                legacy_hook_path.unlink()
+                print("Previous AIST commit-message hook removed.")
+        except OSError as exc:
+            print("Unable to remove the previous AIST commit-message hook.")
+            print(f"Reason: {exc}")
+            sys.exit(1)
 
     # Only remove core.hooksPath if it currently points to
     # the AIST-managed hook directory.
@@ -265,17 +291,17 @@ def uninstall():
             pass
 
     print("")
-    print("AIST Git Validator removed.")
+    print("AIST Stored Procedure Validator removed.")
 
 
 def configure():
     """
-    Configure Jira credentials for the AIST Git Validator.
+    Configure Jira credentials for the AIST Stored Procedure Validator.
     """
 
     existing = load_config()
 
-    print("AIST Git Validator Configuration")
+    print("AIST Stored Procedure Validator Configuration")
     print("================================")
     print("")
     print("Jira configuration")
@@ -376,15 +402,15 @@ def configure():
 
 def setup():
     """
-    Perform first-time AIST Git Validator setup.
+    Perform first-time AIST Stored Procedure Validator setup.
     """
 
-    print("AIST Git Validator Setup")
+    print("AIST Stored Procedure Validator Setup")
     print("========================")
     print("")
     print(
         "This will configure your Jira connection "
-        "and install the Git commit hook."
+        "and install the Git pre-commit hook."
     )
     print("")
 
@@ -393,14 +419,14 @@ def setup():
     print("")
     print("Git configuration")
     print("-----------------")
-    print("Installing Git commit hook...")
+    print("Installing Git pre-commit hook...")
     print("")
 
     try:
         install()
     except Exception as exc:
         print("")
-        print("Unable to install the Git commit hook.")
+        print("Unable to install the Git pre-commit hook.")
         print(f"Reason: {exc}")
         print("")
         print("Your Jira configuration was saved.")
@@ -420,13 +446,13 @@ def renew():
     config = load_config()
 
     if not config:
-        print("AIST Git Validator is not configured.")
+        print("AIST Stored Procedure Validator is not configured.")
         print("")
         print("Run:")
         print("  aistctl setup")
         sys.exit(1)
 
-    print("AIST Git Validator Token Renewal")
+    print("AIST Stored Procedure Validator Token Renewal")
     print("================================")
     print("")
     print(
@@ -517,7 +543,7 @@ def status():
     def not_configured(label, value):
         print(f"{label:<20}: {RED}{value}{RESET}")
 
-    print("AIST Git Validator")
+    print("AIST Stored Procedure Validator")
     print("===================")
 
     # CLI
@@ -547,10 +573,10 @@ def status():
     hook_path = get_hook_path()
 
     if hook_path.exists():
-        configured("Commit hook", str(hook_path))
+        configured("Pre-pre-commit hook", str(hook_path))
     else:
         not_configured(
-            "Commit hook",
+            "Pre-pre-commit hook",
             "not installed",
         )
 
@@ -628,135 +654,10 @@ def status():
         )
 
 
-async def validate_commit_message(
-    message_file: str,
-) -> int:
-    """
-    Validate the commit message supplied by Git.
-    """
-
-    message_path = Path(message_file)
-
-    if not message_path.exists():
-        print(
-            f"Commit message file not found: {message_file}",
-            file=sys.stderr,
-        )
-        return 1
-
-    commit_message = message_path.read_text(
-        encoding="utf-8",
-    )
-
-    try:
-        jira = JiraClient()
-
-    except RuntimeError as exc:
-        print("")
-        print("Commit rejected.")
-        print("")
-        print(str(exc))
-        print("")
-        return 1
-
-    result = await validate_commit(
-        commit_message,
-        jira,
-    )
-
-    if result["valid"]:
-        # Keep successful commits quiet.
-        return 0
-
-    print("")
-    print("Commit rejected.")
-    print("")
-
-    error_type = result.get("error_type")
-
-    if error_type == "missing_issue_key":
-        print(
-            "Commit message must contain a Jira issue key."
-        )
-        print("")
-        print("Expected format:")
-        print("  AIST-1234")
-        print("")
-        print("Example:")
-        print(
-            '  git commit -m "AIST-1234 Add validation"'
-        )
-        print("")
-
-    elif error_type == "issue_not_found":
-        print(result["reason"])
-        print("")
-        print("Please use an existing Jira issue key.")
-        print("")
-    elif error_type == "jira_authentication":
-        print(
-            f"Unable to validate {result['jira_key']} with Jira."
-        )
-        print("")
-        print(
-            "Jira authentication or permission failed."
-        )
-        print(
-            "Your Jira API token may be expired or revoked."
-        )
-        print("")
-        print("Run:")
-        print("  aistctl renew")
-        print("")
-    elif error_type == "jira_connection":
-        print(
-            "Unable to validate "
-            f"{result['jira_key']} with Jira."
-        )
-        print("")
-        print(result["reason"])
-        print("")
-        print(
-            "Check your network connection and "
-            "Jira availability."
-        )
-        print("")
-
-    elif error_type == "jira_rate_limit":
-        print(
-            "Unable to validate "
-            f"{result['jira_key']} with Jira."
-        )
-        print("")
-        print(result["reason"])
-        print("")
-        print("Please wait and try the commit again.")
-        print("")
-
-    elif error_type == "jira_unexpected_response":
-        print(
-            "Unable to validate "
-            f"{result['jira_key']} with Jira."
-        )
-        print("")
-        print(result["reason"])
-        print("")
-        print(
-            "Check Jira availability or contact your "
-            "Jira administrator if the problem continues."
-        )
-        print("")
-
-    else:
-        print(result["reason"])
-        print("")
-
-    return 1
-
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="aistctl",
-        description="AIST Git Validator",
+        description="AIST Stored Procedure Validator",
         usage="aistctl <command> [flags]",
         epilog='Use "aistctl <command> --help" for more information.',
     )
@@ -770,14 +671,14 @@ def build_parser():
     setup_parser = subparsers.add_parser(
         "setup",
         help="Configure Jira and install the Git hook.",
-        description="Configure Jira and install the Git commit hook.",
+        description="Configure Jira and install the stored procedure validation hook.",
     )
     setup_parser.set_defaults(handler=lambda args: setup())
 
     configure_parser = subparsers.add_parser(
         "configure",
         help="Configure Jira credentials.",
-        description="Configure the Jira connection used by AIST Git Validator.",
+        description="Configure the Jira connection used by AIST Stored Procedure Validator.",
     )
     configure_parser.set_defaults(handler=lambda args: configure())
 
@@ -790,39 +691,33 @@ def build_parser():
 
     install_parser = subparsers.add_parser(
         "install",
-        help="Install the global Git commit-msg hook.",
-        description="Install the global Git commit-msg hook.",
+        help="Install the global Git pre-pre-commit hook.",
+        description="Install the global Git pre-pre-commit hook.",
     )
     install_parser.set_defaults(handler=lambda args: install())
 
     uninstall_parser = subparsers.add_parser(
         "uninstall",
-        help="Remove the AIST Git commit-msg hook.",
-        description="Remove the AIST Git commit-msg hook.",
+        help="Remove the AIST Git pre-pre-commit hook.",
+        description="Remove the AIST Git pre-pre-commit hook.",
     )
     uninstall_parser.set_defaults(handler=lambda args: uninstall())
 
     status_parser = subparsers.add_parser(
         "status",
         help="Show installation and configuration status.",
-        description="Show AIST Git Validator installation and configuration status.",
+        description="Show AIST Stored Procedure Validator installation and configuration status.",
     )
     status_parser.set_defaults(handler=lambda args: status())
 
-    # Internal command used by the Git commit-msg hook.
+    # Internal command used by the Git pre-commit hook.
     validate_parser = subparsers.add_parser(
-        "validate-commit",
+        "validate-storedprocs",
         help=argparse.SUPPRESS,
         description=argparse.SUPPRESS,
     )
-    validate_parser.add_argument(
-        "message_file",
-        help=argparse.SUPPRESS,
-    )
     validate_parser.set_defaults(
-        handler=lambda args: asyncio.run(
-            validate_commit_message(args.message_file)
-        )
+        handler=lambda args: validate_stored_procedures()
     )
 
     # Keep the hook entry point available to Git without exposing it
@@ -830,7 +725,7 @@ def build_parser():
     subparsers._choices_actions = [
         action
         for action in subparsers._choices_actions
-        if action.dest != "validate-commit"
+        if action.dest != "validate-storedprocs"
     ]
 
     return parser
@@ -855,7 +750,7 @@ def main():
         sys.exit(1)
     except Exception as exc:
         print("")
-        print("AIST Git Validator encountered an unexpected error.")
+        print("AIST Stored Procedure Validator encountered an unexpected error.")
         print(f"Reason: {exc}")
         print("")
         sys.exit(1)

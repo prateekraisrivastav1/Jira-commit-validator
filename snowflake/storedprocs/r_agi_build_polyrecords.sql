@@ -17,6 +17,8 @@
 -- //------------------------------------------------------------
 -- // CHANGE HISTORY:
 -- // 2026-11-03 -- Prateek -- AIST-1234 - Updated premium calculation logic
+-- // 2026-11-03 -- Prateek -- AIST-11 Updated validation logic
+
 
 CREATE OR REPLACE PROCEDURE TC02_HISTORICAL_TICKET()
 RETURNS VARCHAR

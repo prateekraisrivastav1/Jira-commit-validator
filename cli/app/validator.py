@@ -1,7 +1,10 @@
+
+import asyncio
 import re
-from typing import Optional
+import subprocess
 
 from app.jira import (
+    JiraClient,
     JiraAuthenticationError,
     JiraConnectionError,
     JiraRateLimitError,
@@ -9,159 +12,174 @@ from app.jira import (
 )
 
 
-JIRA_KEY_PATTERN = re.compile(
-    r"\b(AIST-\d+)\b",
-    re.IGNORECASE,
-)
+JIRA_PATTERN = re.compile(r"\bAIST-\d+\b", re.IGNORECASE)
 
 
-def extract_jira_key(
-    commit_message: str,
-) -> Optional[str]:
-    """
-    Extract an AIST Jira issue key from the commit message.
-    """
-
-    match = JIRA_KEY_PATTERN.search(commit_message)
-
-    if not match:
-        return None
-
-    return match.group(1).upper()
+def run_git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        text=True,
+    )
 
 
-async def validate_commit(
-    commit_message: str,
-    jira_client,
-):
-    """
-    Validate a Git commit message.
+def get_changed_stored_procedure_files() -> list[str]:
+    result = run_git(
+        "diff",
+        "--cached",
+        "--name-only",
+        "--diff-filter=ACMR",
+        "--",
+        "snowflake/storedprocs/",
+    )
 
-    Rules:
-    1. Commit message must contain AIST-<number>.
-    2. Jira credentials must be valid.
-    3. The Jira issue must exist.
-    """
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.strip()
+            or "Unable to inspect staged Git changes."
+        )
 
-    jira_key = extract_jira_key(commit_message)
+    return [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip()
+    ]
 
-    if not jira_key:
-        return {
-            "valid": False,
-            "jira_key": None,
-            "error_type": "missing_issue_key",
-            "reason": (
-                "Commit message must contain a Jira "
-                "issue key in the format AIST-1234."
-            ),
-        }
 
-    # Validate Jira credentials first. This prevents an invalid
-    # credential from being mistaken for a missing issue.
+def get_added_lines() -> list[str]:
+    result = run_git(
+        "diff",
+        "--cached",
+        "--no-ext-diff",
+        "--unified=0",
+        "--",
+        "snowflake/storedprocs/",
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.strip()
+            or "Unable to read staged SQL changes."
+        )
+
+    added_lines = []
+
+    for line in result.stdout.splitlines():
+        if line.startswith("+++") or not line.startswith("+"):
+            continue
+
+        added_lines.append(line[1:].strip())
+
+    return added_lines
+
+
+async def validate_jira_issues(jira_keys: list[str]) -> bool:
+    jira = JiraClient()
+
+    await jira.validate_credentials()
+
+    for jira_key in jira_keys:
+        exists = await jira.issue_exists(jira_key)
+
+        if not exists:
+            print(f"Validation failed: {jira_key} does not exist in Jira.")
+            return False
+
+        print(f"Jira issue verified: {jira_key}")
+
+    return True
+
+
+def validate_stored_procedures() -> int:
     try:
-        await jira_client.validate_credentials()
+        changed_files = get_changed_stored_procedure_files()
+
+        # Skip validation if no stored procedure files are staged.
+        if not changed_files:
+            return 0
+
+        added_lines = get_added_lines()
+
+        comment_lines = [
+            line for line in added_lines
+            if line.startswith("--") or line.startswith("//")
+        ]
+
+        jira_keys = sorted({
+            match.group(0).upper()
+            for line in comment_lines
+            for match in JIRA_PATTERN.finditer(line)
+        })
+
+        if not jira_keys:
+            print("")
+            print("Commit rejected.")
+            print(
+                "No Jira issue key found in newly added "
+                "stored procedure comments."
+            )
+            print("")
+            print("Example:")
+            print(
+                "-- 2026-11-04 -- Author -- AIST-1234 - "
+                "Describe the stored procedure change"
+            )
+            print("")
+            return 1
+
+        print("")
+        print("Validating stored procedure Jira references...")
+        print("")
+
+        if not asyncio.run(validate_jira_issues(jira_keys)):
+            print("")
+            print("Commit rejected.")
+            print("Please use a valid Jira issue key.")
+            print("")
+            return 1
+
+        print("")
+        print("Stored procedure validation successful.")
+        print("")
+        return 0
 
     except JiraAuthenticationError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_authentication",
-            "reason": str(exc),
-        }
+        print("")
+        print("Jira authentication or permission failed.")
+        print(str(exc))
+        print("Run: aistctl renew")
+        print("")
+        return 1
 
     except JiraConnectionError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_connection",
-            "reason": str(exc),
-        }
+        print("")
+        print("Unable to connect to Jira.")
+        print(str(exc))
+        print("Check your network connection and try again.")
+        print("")
+        return 1
 
     except JiraRateLimitError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_rate_limit",
-            "reason": str(exc),
-        }
+        print("")
+        print("Jira rate limit exceeded.")
+        print(str(exc))
+        print("")
+        return 1
 
     except JiraUnexpectedResponseError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_unexpected_response",
-            "reason": str(exc),
-        }
+        print("")
+        print("Unexpected response from Jira.")
+        print(str(exc))
+        print("")
+        return 1
 
-    except Exception as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_error",
-            "reason": f"Unable to validate Jira credentials: {exc}",
-        }
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        print("")
+        print("Unable to validate stored procedure changes.")
+        print(f"Reason: {exc}")
+        print("")
+        return 1
 
-    # Credentials are valid. Now check whether the issue exists.
-    try:
-        exists = await jira_client.issue_exists(jira_key)
 
-    except JiraAuthenticationError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_authentication",
-            "reason": str(exc),
-        }
-
-    except JiraConnectionError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_connection",
-            "reason": str(exc),
-        }
-
-    except JiraRateLimitError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_rate_limit",
-            "reason": str(exc),
-        }
-
-    except JiraUnexpectedResponseError as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_unexpected_response",
-            "reason": str(exc),
-        }
-
-    except Exception as exc:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "jira_error",
-            "reason": (
-                f"Unable to validate {jira_key} with Jira: {exc}"
-            ),
-        }
-
-    if not exists:
-        return {
-            "valid": False,
-            "jira_key": jira_key,
-            "error_type": "issue_not_found",
-            "reason": (
-                f"{jira_key} does not exist in Jira."
-            ),
-        }
-
-    return {
-        "valid": True,
-        "jira_key": jira_key,
-        "error_type": None,
-        "reason": (
-            f"{jira_key} exists in Jira."
-        ),
-    }
+if __name__ == "__main__":
+    raise SystemExit(validate_stored_procedures())
