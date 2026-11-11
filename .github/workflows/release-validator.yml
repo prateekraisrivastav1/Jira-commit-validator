@@ -1,0 +1,55 @@
+name: Build and publish AIST validator
+
+on:
+  push:
+    tags:
+      - 'validator-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout EMU source repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller httpx python-dotenv
+
+      - name: Build standalone validator
+        working-directory: cli
+        shell: pwsh
+        run: |
+          pyinstaller --clean --onefile --name aist-validator --paths . validator_entry.py
+
+      - name: Create checksum and version metadata
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^validator-v', ''
+          Set-Content -NoNewline -Path cli/dist/validator-version.json -Value ("{`"version`":`"$version`"}")
+          $hash = (Get-FileHash cli/dist/aist-validator.exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -NoNewline -Path cli/dist/aist-validator.exe.sha256 -Value $hash
+
+      - name: Publish release to personal public repository
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        shell: pwsh
+        run: |
+          if (-not $env:GH_TOKEN) { throw 'RELEASE_REPO_TOKEN secret is not configured.' }
+          gh release create "${{ github.ref_name }}" `
+            cli/dist/aist-validator.exe `
+            cli/dist/aist-validator.exe.sha256 `
+            cli/dist/validator-version.json `
+            --repo prateekraisrivastav1/aistctl-releases `
+            --title "AIST Validator ${{ github.ref_name }}" `
+            --notes "Standalone AIST stored procedure validator release."

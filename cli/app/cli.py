@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.jira import JiraClient
-from app.validator import validate_stored_procedures
+from app.updater import install_update_task, remove_update_task, run_validator, update_validator
 
 
 HOOK_NAME = "pre-commit"
@@ -93,7 +93,7 @@ def run_git(*args: str) -> subprocess.CompletedProcess:
 
 def install():
     """
-    Install the global Git pre-pre-commit hook.
+    Install the global Git pre-commit hook.
     """
 
     print_banner()
@@ -117,7 +117,7 @@ def install():
         print("AIST Git pre-commit hook is already installed.")
         print("")
         print(f"Hook directory : {hooks_directory}")
-        print(f"Pre-pre-commit hook    : {hook_path}")
+        print(f"Pre-commit hook    : {hook_path}")
         print(f"Git hooks path : {hooks_directory}")
         return
 
@@ -165,12 +165,14 @@ exit $?
             print(f"Reason: {result.stderr.strip()}")
         sys.exit(1)
 
+    install_update_task()
+
     print("Git hook installed.")
     print("")
     print("Configuration")
     print("-------------")
     print(f"Hook directory : {hooks_directory}")
-    print(f"Pre-pre-commit hook    : {hook_path}")
+    print(f"Pre-commit hook    : {hook_path}")
     print(f"Git hooks path : {hooks_directory}")
     print("")
     print("AISTCTL is ready.")
@@ -190,10 +192,12 @@ def uninstall():
     legacy_hook_path = hooks_directory / LEGACY_HOOK_NAME
     config_path = get_config_path()
 
+    remove_update_task()
+
     print("Removing AIST Stored Procedure Validator...")
     print("")
 
-    # Remove the AIST pre-pre-commit hook.
+    # Remove the AIST pre-commit hook.
     if hook_path.exists():
         try:
             hook_path.unlink()
@@ -573,10 +577,10 @@ def status():
     hook_path = get_hook_path()
 
     if hook_path.exists():
-        configured("Pre-pre-commit hook", str(hook_path))
+        configured("Pre-commit hook", str(hook_path))
     else:
         not_configured(
-            "Pre-pre-commit hook",
+            "Pre-commit hook",
             "not installed",
         )
 
@@ -691,15 +695,15 @@ def build_parser():
 
     install_parser = subparsers.add_parser(
         "install",
-        help="Install the global Git pre-pre-commit hook.",
-        description="Install the global Git pre-pre-commit hook.",
+        help="Install the global Git pre-commit hook.",
+        description="Install the global Git pre-commit hook.",
     )
     install_parser.set_defaults(handler=lambda args: install())
 
     uninstall_parser = subparsers.add_parser(
         "uninstall",
-        help="Remove the AIST Git pre-pre-commit hook.",
-        description="Remove the AIST Git pre-pre-commit hook.",
+        help="Remove the AIST Git pre-commit hook.",
+        description="Remove the AIST Git pre-commit hook.",
     )
     uninstall_parser.set_defaults(handler=lambda args: uninstall())
 
@@ -710,6 +714,14 @@ def build_parser():
     )
     status_parser.set_defaults(handler=lambda args: status())
 
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Check for and install validator updates.",
+        description="Download the latest verified stored procedure validator release.",
+    )
+    update_parser.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
+    update_parser.set_defaults(handler=lambda args: update_validator(quiet=args.quiet))
+
     # Internal command used by the Git pre-commit hook.
     validate_parser = subparsers.add_parser(
         "validate-storedprocs",
@@ -717,7 +729,7 @@ def build_parser():
         description=argparse.SUPPRESS,
     )
     validate_parser.set_defaults(
-        handler=lambda args: validate_stored_procedures()
+        handler=lambda args: run_validator()
     )
 
     # Keep the hook entry point available to Git without exposing it
