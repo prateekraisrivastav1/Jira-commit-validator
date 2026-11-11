@@ -1,9 +1,7 @@
 name: Build and publish AIST validator
 
 on:
-  push:
-    tags:
-      - 'validator-v*'
+  workflow_dispatch: 
 
 permissions:
   contents: read
