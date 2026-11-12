@@ -120,7 +120,7 @@ jobs:
           }
 
           gh release create "${{ steps.version.outputs.TAG }}" `
-            cli/bin/aistctl.exe `
+            cli/dist/aistctl.exe `
             cli/dist/aist-validator.exe `
             cli/dist/aist-validator.exe.sha256 `
             cli/dist/validator-version.json `
