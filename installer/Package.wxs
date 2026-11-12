@@ -1,42 +1,129 @@
+
 <Wix
   xmlns="http://wixtoolset.org/schemas/v4/wxs"
   xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
   <Package
     Name="AIST Git Validator"
     Manufacturer="AIST"
-    Version="1.0.2"
+    Version="1.0.3"
     Scope="perUser"
-    UpgradeCode="{7F8B6A2D-3B2D-4E9A-9C1A-5F5E7B8C2D11}">
-    <MajorUpgrade DowngradeErrorMessage="A newer version of AIST Git Validator is already installed." />
+    UpgradeCode="{7F8B6A2D-3B2D-4E9A-9C1A-5F5E7B8C2D11}"
+    ProductCode="*">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of AIST Git Validator is already installed." />
+
     <MediaTemplate EmbedCab="yes" />
-    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="APPLICATIONFOLDER" />
+
+    <ui:WixUI
+      Id="WixUI_InstallDir"
+      InstallDirectory="APPLICATIONFOLDER" />
+
     <UI>
-      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Condition="NOT Installed" Order="99" />
-      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Condition="NOT Installed" Order="99" />
+      <Publish
+        Dialog="WelcomeDlg"
+        Control="Next"
+        Event="NewDialog"
+        Value="InstallDirDlg"
+        Condition="NOT Installed"
+        Order="99" />
+
+      <Publish
+        Dialog="InstallDirDlg"
+        Control="Back"
+        Event="NewDialog"
+        Value="WelcomeDlg"
+        Condition="NOT Installed"
+        Order="99" />
     </UI>
+
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="AIST">
         <Directory Id="APPLICATIONFOLDER" Name="Git Validator">
-          <Component Id="ApplicationComponent" Guid="{A2D7E9B1-4C6F-4E3A-8D21-7B5F9C2E1A44}">
-            <File Id="AistCtlExe" Source="..\cli\dist\aistctl.exe" KeyPath="no" />
-            <File Id="AistValidatorExe" Source="..\cli\dist\aist-validator.exe" KeyPath="no" />
-            <File Id="ValidatorVersion" Source="..\cli\dist\validator-version.json" KeyPath="no" />
-            <RegistryValue Root="HKCU" Key="Software\AIST\Git Validator" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
-            <RemoveFile Id="RemoveApplicationFiles" Name="*" On="uninstall" />
-            <RemoveFile Id="RemoveInstallFiles" Directory="INSTALLFOLDER" Name="*" On="uninstall" />
-            <RemoveFolder Id="RemoveApplicationFolder" On="uninstall" />
-            <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
-            <Environment Id="AistPath" Name="PATH" Value="[APPLICATIONFOLDER]" Permanent="no" Part="last" Action="set" System="no" />
+
+          <Component
+            Id="ApplicationComponent"
+            Guid="{A2D7E9B1-4C6F-4E3A-8D21-7B5F9C2E1A44}">
+
+            <File
+              Id="AistCtlExe"
+              Source="..\cli\dist\aistctl.exe"
+              KeyPath="no" />
+
+            <File
+              Id="AistValidatorExe"
+              Source="..\cli\dist\aist-validator.exe"
+              KeyPath="no" />
+
+            <File
+              Id="ValidatorVersion"
+              Source="..\cli\dist\validator-version.json"
+              KeyPath="no" />
+
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\AIST\Git Validator"
+              Name="Installed"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+
+            <RemoveFile
+              Id="RemoveApplicationFiles"
+              Name="*"
+              On="uninstall" />
+
+            <RemoveFile
+              Id="RemoveInstallFiles"
+              Directory="INSTALLFOLDER"
+              Name="*"
+              On="uninstall" />
+
+            <RemoveFolder
+              Id="RemoveApplicationFolder"
+              On="uninstall" />
+
+            <RemoveFolder
+              Id="RemoveInstallFolder"
+              Directory="INSTALLFOLDER"
+              On="uninstall" />
+
+            <Environment
+              Id="AistPath"
+              Name="PATH"
+              Value="[APPLICATIONFOLDER]"
+              Permanent="no"
+              Part="last"
+              Action="set"
+              System="no" />
+
           </Component>
         </Directory>
       </Directory>
     </StandardDirectory>
-    <CustomAction Id="UninstallAistConfiguration" FileRef="AistCtlExe" ExeCommand="uninstall" Execute="immediate" Return="ignore" Impersonate="yes" />
+
+    <CustomAction
+      Id="UninstallAistConfiguration"
+      FileRef="AistCtlExe"
+      ExeCommand="uninstall"
+      Execute="immediate"
+      Return="ignore"
+      Impersonate="yes" />
+
     <InstallExecuteSequence>
-      <Custom Action="UninstallAistConfiguration" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot;" />
+      <Custom
+        Action="UninstallAistConfiguration"
+        Before="RemoveFiles"
+        Condition="REMOVE~=&quot;ALL&quot;" />
     </InstallExecuteSequence>
-    <Feature Id="MainFeature" Title="AIST Git Validator" Level="1">
+
+    <Feature
+      Id="MainFeature"
+      Title="AIST Git Validator"
+      Level="1">
       <ComponentRef Id="ApplicationComponent" />
     </Feature>
+
   </Package>
 </Wix>
