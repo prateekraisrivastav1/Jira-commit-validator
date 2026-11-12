@@ -1,14 +1,15 @@
 
-name: Build and publish AIST validator
+name: Build and publish AIST Git Validator
 
 on:
   push:
     tags:
       - "v*"
+
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 1.0.0"
+        description: "Release version, for example 1.0.4"
         required: true
         type: string
 
@@ -28,6 +29,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
       - name: Determine release version
         id: version
         shell: pwsh
@@ -40,8 +46,8 @@ jobs:
             $version = $tag -replace '^v', ''
           }
 
-          if ($version -notmatch '^\d+(\.\d+)*$') {
-            throw "Invalid release version: $version"
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Version must have exactly three numeric components, e.g. 1.0.4"
           }
 
           "VERSION=$version" >> $env:GITHUB_OUTPUT
@@ -52,6 +58,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller httpx python-dotenv
+
+      - name: Build aistctl CLI
+        working-directory: cli
+        shell: pwsh
+        run: |
+          pyinstaller --clean --onefile --name aistctl --paths . app/cli.py
 
       - name: Build standalone validator
         working-directory: cli
@@ -64,10 +76,39 @@ jobs:
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
 
-          Set-Content -NoNewline -Path cli/dist/validator-version.json -Value ("{`"version`":`"$version`"}")
+          Set-Content -NoNewline `
+            -Path cli/dist/validator-version.json `
+            -Value ("{`"version`":`"$version`"}")
 
           $hash = (Get-FileHash cli/dist/aist-validator.exe -Algorithm SHA256).Hash.ToLower()
-          Set-Content -NoNewline -Path cli/dist/aist-validator.exe.sha256 -Value $hash
+
+          Set-Content -NoNewline `
+            -Path cli/dist/aist-validator.exe.sha256 `
+            -Value $hash
+
+      - name: Restore WiX dependencies
+        shell: pwsh
+        run: |
+          dotnet restore installer/AIST.GitValidator.wixproj
+
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+
+          dotnet build installer/AIST.GitValidator.wixproj `
+            -c Release `
+            "-p:DefineConstants=ProductVersion=$version"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSI build failed."
+          }
+
+          $msi = "installer/bin/x64/Release/AIST-Git-Validator.msi"
+
+          if (-not (Test-Path $msi)) {
+            throw "MSI output was not found: $msi"
+          }
 
       - name: Publish release to personal public repository
         env:
@@ -79,9 +120,11 @@ jobs:
           }
 
           gh release create "${{ steps.version.outputs.TAG }}" `
+            cli/bin/aistctl.exe `
             cli/dist/aist-validator.exe `
             cli/dist/aist-validator.exe.sha256 `
             cli/dist/validator-version.json `
+            installer/bin/x64/Release/AIST-Git-Validator.msi `
             --repo prateekraisrivastav1/aistctl-releases `
-            --title "AIST Validator ${{ steps.version.outputs.TAG }}" `
-            --notes "Standalone AIST stored procedure validator release."
+            --title "AIST Git Validator ${{ steps.version.outputs.TAG }}" `
+            --notes "AIST Git Validator release. Includes the Windows MSI installer and independently updateable validator."

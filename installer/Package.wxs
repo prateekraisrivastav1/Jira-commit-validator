@@ -6,7 +6,7 @@
   <Package
     Name="AIST Git Validator"
     Manufacturer="AIST"
-    Version="1.0.3"
+    Version="$(var.ProductVersion)"
     Scope="perUser"
     UpgradeCode="{7F8B6A2D-3B2D-4E9A-9C1A-5F5E7B8C2D11}"
     ProductCode="*">
@@ -115,7 +115,7 @@
       <Custom
         Action="UninstallAistConfiguration"
         Before="RemoveFiles"
-        Condition="REMOVE~=&quot;ALL&quot;" />
+        Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
 
     <Feature
